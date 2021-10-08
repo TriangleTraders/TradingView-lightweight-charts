@@ -14,19 +14,21 @@ import {
 	TimeScaleInvalidation,
 	TimeScaleInvalidationType,
 } from '../model/invalidate-mask';
+import { PaneInfo } from '../model/pane';
 import { Point } from '../model/point';
 import { PriceAxisPosition } from '../model/price-scale';
 import { Series } from '../model/series';
 import { TimePoint, TimePointIndex } from '../model/time-data';
 
 import { createPreconfiguredCanvas, getCanvasDevicePixelRatio, getContext2D, Size } from './canvas-utils';
-// import { PaneSeparator, SEPARATOR_HEIGHT } from './pane-separator';
+import { PaneSeparator, SEPARATOR_HEIGHT } from './pane-separator';
 import { PaneWidget } from './pane-widget';
 import { TimeAxisWidget } from './time-axis-widget';
 
-export interface MouseEventParamsImpl {
+export interface MouseEventParamsImpl extends PaneInfo {
 	time?: TimePoint;
 	point?: Point;
+	paneIndex?: number;
 	seriesPrices: Map<Series, BarPrice | BarPrices>;
 	hoveredSeries?: Series;
 	hoveredObject?: string;
@@ -37,7 +39,7 @@ export type MouseEventParamsImplSupplier = () => MouseEventParamsImpl;
 export class ChartWidget implements IDestroyable {
 	private readonly _options: ChartOptionsInternal;
 	private _paneWidgets: PaneWidget[] = [];
-	// private _paneSeparators: PaneSeparator[] = [];
+	private _paneSeparators: PaneSeparator[] = [];
 	private readonly _model: ChartModel;
 	private _drawRafId: number = 0;
 	private _height: number = 0;
@@ -141,10 +143,10 @@ export class ChartWidget implements IDestroyable {
 		}
 		this._paneWidgets = [];
 
-		// for (const paneSeparator of this._paneSeparators) {
-		// 	this._destroySeparator(paneSeparator);
-		// }
-		// this._paneSeparators = [];
+		for (const paneSeparator of this._paneSeparators) {
+			this._destroySeparator(paneSeparator);
+		}
+		this._paneSeparators = [];
 
 		ensureNotNull(this._timeAxisWidget).destroy();
 
@@ -232,13 +234,13 @@ export class ChartWidget implements IDestroyable {
 					const image = priceAxisWidget.getImage();
 					ctx.drawImage(image, targetX, targetY, priceAxisWidget.getWidth(), paneWidgetHeight);
 					targetY += paneWidgetHeight;
-					// if (paneIndex < this._paneWidgets.length - 1) {
-					// 	const separator = this._paneSeparators[paneIndex];
-					// 	const separatorSize = separator.getSize();
-					// 	const separatorImage = separator.getImage();
-					// 	ctx.drawImage(separatorImage, targetX, targetY, separatorSize.w, separatorSize.h);
-					// 	targetY += separatorSize.h;
-					// }
+					if (paneIndex < this._paneWidgets.length - 1) {
+						const separator = this._paneSeparators[paneIndex];
+						const separatorSize = separator.getSize();
+						const separatorImage = separator.getImage();
+						ctx.drawImage(separatorImage, targetX, targetY, separatorSize.w, separatorSize.h);
+						targetY += separatorSize.h;
+					}
 				}
 			};
 			// draw left price scale if exists
@@ -253,13 +255,13 @@ export class ChartWidget implements IDestroyable {
 				const image = paneWidget.getImage();
 				ctx.drawImage(image, targetX, targetY, paneWidgetSize.w, paneWidgetSize.h);
 				targetY += paneWidgetSize.h;
-				// if (paneIndex < this._paneWidgets.length - 1) {
-				// 	const separator = this._paneSeparators[paneIndex];
-				// 	const separatorSize = separator.getSize();
-				// 	const separatorImage = separator.getImage();
-				// 	ctx.drawImage(separatorImage, targetX, targetY, separatorSize.w, separatorSize.h);
-				// 	targetY += separatorSize.h;
-				// }
+				if (paneIndex < this._paneWidgets.length - 1) {
+					const separator = this._paneSeparators[paneIndex];
+					const separatorSize = separator.getSize();
+					const separatorImage = separator.getImage();
+					ctx.drawImage(separatorImage, targetX, targetY, separatorSize.w, separatorSize.h);
+					targetY += separatorSize.h;
+				}
 			}
 			targetX += firstPane.getSize().w;
 			if (this._isRightAxisVisible()) {
@@ -318,6 +320,9 @@ export class ChartWidget implements IDestroyable {
 		return ensureNotNull(priceAxisWidget).getWidth();
 	}
 
+	public adjustSize(): void {
+		this._adjustSizeImpl();
+	}
 	// eslint-disable-next-line complexity
 	private _adjustSizeImpl(): void {
 		let totalStretch = 0;
@@ -340,9 +345,9 @@ export class ChartWidget implements IDestroyable {
 
 		const paneWidth = Math.max(width - leftPriceAxisWidth - rightPriceAxisWidth, 0);
 
-		// const separatorCount = this._paneSeparators.length;
-		// const separatorHeight = SEPARATOR_HEIGHT;
-		const separatorsHeight = 0; // separatorHeight * separatorCount;
+		const separatorCount = this._paneSeparators.length;
+		const separatorHeight = SEPARATOR_HEIGHT;
+		const separatorsHeight = separatorHeight * separatorCount;
 		let timeAxisHeight = this._options.timeScale.visible ? this._timeAxisWidget.optimalHeight() : 0;
 		// TODO: Fix it better
 		// on Hi-DPI CSS size * Device Pixel Ratio should be integer to avoid smoothing
@@ -354,6 +359,9 @@ export class ChartWidget implements IDestroyable {
 		const stretchPixels = totalPaneHeight / totalStretch;
 
 		let accumulatedHeight = 0;
+
+		const pixelRatio = document.body.ownerDocument.defaultView?.devicePixelRatio || 1;
+
 		for (let paneIndex = 0; paneIndex < this._paneWidgets.length; ++paneIndex) {
 			const paneWidget = this._paneWidgets[paneIndex];
 			paneWidget.setState(this._model.panes()[paneIndex]);
@@ -362,9 +370,9 @@ export class ChartWidget implements IDestroyable {
 			let calculatePaneHeight = 0;
 
 			if (paneIndex === this._paneWidgets.length - 1) {
-				calculatePaneHeight = totalPaneHeight - accumulatedHeight;
+				calculatePaneHeight = Math.ceil((totalPaneHeight - accumulatedHeight) * pixelRatio) / pixelRatio;
 			} else {
-				calculatePaneHeight = Math.round(paneWidget.stretchFactor() * stretchPixels);
+				calculatePaneHeight = Math.round(paneWidget.stretchFactor() * stretchPixels * pixelRatio) / pixelRatio;
 			}
 
 			paneHeight = Math.max(calculatePaneHeight, 2);
@@ -519,10 +527,10 @@ export class ChartWidget implements IDestroyable {
 		this._syncGuiWithModel();
 	}
 
-	// private _destroySeparator(separator: PaneSeparator): void {
-	// 	this._tableElement.removeChild(separator.getElement());
-	// 	separator.destroy();
-	// }
+	private _destroySeparator(separator: PaneSeparator): void {
+		this._tableElement.removeChild(separator.getElement());
+		separator.destroy();
+	}
 
 	private _syncGuiWithModel(): void {
 		const panes = this._model.panes();
@@ -536,10 +544,10 @@ export class ChartWidget implements IDestroyable {
 			paneWidget.clicked().unsubscribeAll(this);
 			paneWidget.destroy();
 
-			// const paneSeparator = this._paneSeparators.pop();
-			// if (paneSeparator !== undefined) {
-			// 	this._destroySeparator(paneSeparator);
-			// }
+			const paneSeparator = this._paneSeparators.pop();
+			if (paneSeparator !== undefined) {
+				this._destroySeparator(paneSeparator);
+			}
 		}
 
 		// Create (if needed) new pane widgets and separators
@@ -550,11 +558,11 @@ export class ChartWidget implements IDestroyable {
 			this._paneWidgets.push(paneWidget);
 
 			// create and insert separator
-			// if (i > 1) {
-			// 	const paneSeparator = new PaneSeparator(this, i - 1, i, true);
-			// 	this._paneSeparators.push(paneSeparator);
-			// 	this._tableElement.insertBefore(paneSeparator.getElement(), this._timeAxisWidget.getElement());
-			// }
+			if (i > 0) {
+				const paneSeparator = new PaneSeparator(this, i - 1, i, false);
+				this._paneSeparators.push(paneSeparator);
+				this._tableElement.insertBefore(paneSeparator.getElement(), this._timeAxisWidget.getElement());
+			}
 
 			// insert paneWidget
 			this._tableElement.insertBefore(paneWidget.getElement(), this._timeAxisWidget.getElement());
@@ -574,7 +582,7 @@ export class ChartWidget implements IDestroyable {
 		this._adjustSizeImpl();
 	}
 
-	private _getMouseEventParamsImpl(index: TimePointIndex | null, point: Point | null): MouseEventParamsImpl {
+	private _getMouseEventParamsImpl(index: TimePointIndex | null, details: Point & PaneInfo | null): MouseEventParamsImpl {
 		const seriesPrices = new Map<Series, BarPrice | BarPrices>();
 		if (index !== null) {
 			const serieses = this._model.serieses();
@@ -606,19 +614,20 @@ export class ChartWidget implements IDestroyable {
 
 		return {
 			time: clientTime,
-			point: point || undefined,
+			point: details && { x: details.x, y: details.y } || undefined,
+			paneIndex: details?.paneIndex,
 			hoveredSeries,
 			seriesPrices,
 			hoveredObject,
 		};
 	}
 
-	private _onPaneWidgetClicked(time: TimePointIndex | null, point: Point): void {
-		this._clicked.fire(() => this._getMouseEventParamsImpl(time, point));
+	private _onPaneWidgetClicked(time: TimePointIndex | null, details: Point & PaneInfo): void {
+		this._clicked.fire(() => this._getMouseEventParamsImpl(time, details));
 	}
 
-	private _onPaneWidgetCrosshairMoved(time: TimePointIndex | null, point: Point | null): void {
-		this._crosshairMoved.fire(() => this._getMouseEventParamsImpl(time, point));
+	private _onPaneWidgetCrosshairMoved(time: TimePointIndex | null, details: Point & PaneInfo | null): void {
+		this._crosshairMoved.fire(() => this._getMouseEventParamsImpl(time, details));
 	}
 
 	private _updateTimeAxisVisibility(): void {

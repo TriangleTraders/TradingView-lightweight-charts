@@ -22,6 +22,7 @@ import { ITimeScaleApi } from './itime-scale-api';
 export interface MouseEventParams {
 	time?: UTCTimestamp | BusinessDay;
 	point?: Point;
+	paneIndex?: number;
 	seriesPrices: Map<ISeriesApi<SeriesType>, BarPrice | BarPrices>;
 	hoveredSeries?: ISeriesApi<SeriesType>;
 	hoveredMarkerId?: SeriesMarker<Time>['id'];
@@ -92,8 +93,9 @@ export interface IChartApi {
 	 */
 	removeSeries(seriesApi: ISeriesApi<SeriesType>): void;
 
-	/*
+	/**
 	 * Adds a subscription to mouse click event
+	 *
 	 * @param handler - handler (function) to be called on mouse click
 	 */
 	subscribeClick(handler: MouseEventHandler): void;
@@ -154,4 +156,21 @@ export interface IChartApi {
 	 * @returns a canvas with the chart drawn on
 	 */
 	takeScreenshot(): HTMLCanvasElement;
+
+	/**
+	 * Removes a pane with index
+	 *
+	 * @param index the pane to be removed
+	 */
+	removePane(index: number): void;
+
+	/**
+	 * swap the position of two panes.
+	 *
+	 * @param first the first index
+	 * @param second the second index
+	 */
+	swapPane(first: number, second: number): void;
+
+	getPaneElements(): HTMLElement[];
 }

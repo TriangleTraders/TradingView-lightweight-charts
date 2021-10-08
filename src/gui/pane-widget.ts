@@ -11,7 +11,7 @@ import { Coordinate } from '../model/coordinate';
 import { IDataSource } from '../model/idata-source';
 import { InvalidationLevel } from '../model/invalidate-mask';
 import { IPriceDataSource } from '../model/iprice-data-source';
-import { Pane } from '../model/pane';
+import { Pane, PaneInfo } from '../model/pane';
 import { Point } from '../model/point';
 import { TimePointIndex } from '../model/time-data';
 import { IPaneRenderer } from '../renderers/ipane-renderer';
@@ -89,7 +89,7 @@ export class PaneWidget implements IDestroyable {
 	private readonly _mouseEventHandler: MouseEventHandler;
 	private _startScrollingPos: StartScrollPosition | null = null;
 	private _isScrolling: boolean = false;
-	private _clicked: Delegate<TimePointIndex | null, Point> = new Delegate();
+	private _clicked: Delegate<TimePointIndex | null, Point & PaneInfo> = new Delegate();
 	private _prevPinchScale: number = 0;
 	private _longTap: boolean = false;
 	private _startTrackPoint: Point | null = null;
@@ -320,7 +320,8 @@ export class PaneWidget implements IDestroyable {
 
 		if (this._clicked.hasListeners()) {
 			const currentTime = this._model().crosshairSource().appliedIndex();
-			this._clicked.fire(currentTime, { x, y });
+			const paneIndex = this._model().getPaneIndex(ensureNotNull(this._state));
+			this._clicked.fire(currentTime, { x, y, paneIndex });
 		}
 
 		this._tryExitTrackingMode();
@@ -582,6 +583,10 @@ export class PaneWidget implements IDestroyable {
 		return this._leftPriceAxisWidget;
 	}
 
+	public getPaneCell(): HTMLElement {
+		return this._paneCell;
+	}
+
 	public rightPriceAxisWidget(): PriceAxisWidget | null {
 		return this._rightPriceAxisWidget;
 	}
@@ -611,7 +616,7 @@ export class PaneWidget implements IDestroyable {
 	private _drawGrid(ctx: CanvasRenderingContext2D, pixelRatio: number): void {
 		const state = ensureNotNull(this._state);
 		const paneView = state.grid().paneView();
-		const renderer = paneView.renderer(state.height(), state.width());
+		const renderer = paneView.renderer(state.height(), state.width(), state);
 
 		if (renderer !== null) {
 			ctx.save();
@@ -661,7 +666,7 @@ export class PaneWidget implements IDestroyable {
 			: undefined;
 
 		for (const paneView of paneViews) {
-			const renderer = paneView.renderer(height, width);
+			const renderer = paneView.renderer(height, width, state);
 			if (renderer !== null) {
 				ctx.save();
 				drawFn(renderer, ctx, pixelRatio, isHovered, objecId);
@@ -671,8 +676,9 @@ export class PaneWidget implements IDestroyable {
 	}
 
 	private _hitTestPaneView(paneViews: readonly IPaneView[], x: Coordinate, y: Coordinate): HitTestPaneViewResult | null {
+		const state = ensureNotNull(this._state);
 		for (const paneView of paneViews) {
-			const renderer = paneView.renderer(this._size.h, this._size.w);
+			const renderer = paneView.renderer(this._size.h, this._size.w, state);
 			if (renderer !== null && renderer.hitTest) {
 				const result = renderer.hitTest(x, y);
 				if (result !== null) {
