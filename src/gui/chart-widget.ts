@@ -132,6 +132,7 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 		this._updateTimeAxisVisibility();
 		this._model.timeScale().optionsApplied().subscribe(this._model.fullUpdate.bind(this._model), this);
 		this._model.priceScalesOptionsChanged().subscribe(this._model.fullUpdate.bind(this._model), this);
+		this._setVisibilityChangeListener(true);
 	}
 
 	public model(): ChartModel<HorzScaleItem> {
@@ -185,6 +186,7 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 		this._dblClicked.destroy();
 
 		this._uninstallObserver();
+		this._setVisibilityChangeListener(false);
 	}
 
 	public resize(width: number, height: number, forceRepaint: boolean = false): void {
@@ -585,6 +587,30 @@ export class ChartWidget<HorzScaleItem> implements IDestroyable, IChartWidgetBas
 			this.model().scrollChart(deltaX * -80 as Coordinate); // 80 is a made up coefficient, and minus is for the "natural" scroll
 		}
 	}
+
+	private _setVisibilityChangeListener(add: boolean): void {
+		/**
+		 * Chrome 124 - 126 have a bug where the canvas will become blank
+		 * if the user view different tabs and then returns to the tab containing
+		 * the chart.
+		 * It is enough to just draw a single transparent pixel on the canvas to 'revive' it.
+		 * https://issues.chromium.org/issues/328755781
+		 */
+		if (!isChromiumBased(['123', '124', '125', '126'])) {
+			return;
+		}
+		if (add) {
+			document.addEventListener('visibilitychange', this._onVisibilityChanged);
+			return;
+		}
+		document.removeEventListener('visibilitychange', this._onVisibilityChanged);
+	}
+
+	private _onVisibilityChanged = (): void => {
+		if (!document.hidden) {
+			this.model().lightUpdate();
+		}
+	};
 
 	private _drawImpl(invalidateMask: InvalidateMask, time: number): void {
 		const invalidationType = invalidateMask.fullInvalidation();
